@@ -10,7 +10,6 @@ router.use('/user/auth', (req, res, next) => {
     if (err) {
       return res.status(504).send({ errorData: err, errorMessage: 'logging failed' })
     } else {
-      console.log('wait')
       req.user = user
       next()
     }

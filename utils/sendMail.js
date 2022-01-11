@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer'
 
-export async function sendEmail (email, subject, text) {
+const sendEmail = async (email, subject, text) => {
   const transporter = nodemailer.createTransport({
     service: process.env.SERVICE,
     auth: {
@@ -25,3 +25,5 @@ export async function sendEmail (email, subject, text) {
     }
   })
 }
+
+export { sendEmail }

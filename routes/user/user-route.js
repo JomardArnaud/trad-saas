@@ -1,11 +1,11 @@
 import express from 'express'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
-import crypto from 'crypto'
-import * as mailSender from '../../utils/sendMail.js'
+import { sendEmail } from '../../utils/sendMail.js'
+import { checkUsernameValidity, checkPasswordValidity, checkEmailValidity, checkToken } from '../../utils/check.js'
 import User from '../../models/user-model.js'
 import TokenUser from '../../models/token-user-model.js'
-import * as userController from './user-controller.js'
+import { checkUserValidity } from './user-controller.js'
 const router = express.Router()
 
 // 501 error on register
@@ -15,7 +15,7 @@ router.post('/user/register', async (req, res, next) => {
     password: req.body.password,
     email: req.body.email
   }
-  if (userController.checkUserValidity(testUser)) {
+  if (checkUserValidity(testUser)) {
     testUser.password = await bcrypt.hash(testUser.password, 10)
     console.log(testUser.password)
     const newUser = new User({
@@ -39,7 +39,7 @@ router.post('/user/register', async (req, res, next) => {
 
 // 503 error on login
 router.get('/user/login', async (req, res) => {
-  if (!userController.checkUsernameValidity(req.body.username) || !userController.checkPasswordValidity(req.body.password)) {
+  if (!checkUsernameValidity(req.body.username) || !checkPasswordValidity(req.body.password)) {
     res.status(503).send({ errorMessage: 'username/password not valid arguments' })
   }
   const username = req.body.username
@@ -78,20 +78,27 @@ router.post('/user/auth/change-password', async (req, res) => {
 })
 
 router.post('/user/lost-password', async (req, res) => {
-  if (!userController.checkEmailValidity(req.body.email)) { res.json({ status: 'error', messageError: 'wrong email' }) }
+  if (!checkEmailValidity(req.body.email)) { res.json({ status: 'error', messageError: 'wrong email' }) }
   const user = await User.findOne({ email: req.body.email })
+  console.log(req.body.email)
   if (!user) { return res.status(400).send("user with given email doesn't exist") }
-
+  console.log('?')
   let token = await TokenUser.findOne({ userId: user._id })
   if (!token) {
     token = await new TokenUser({
       userId: user._id,
-      token: crypto.randomBytes(32).toString('hex')
+      token: jwt.sign(
+        {
+          id: user._id
+        },
+        process.env.JWT_SECRET
+      )
     }).save()
+    console.log(token)
   }
   console.log(user.email)
   const link = `http://localhost:3000/user/password-reset/${user._id}/${token.token}`
-  await mailSender.sendEmail(user.email, 'Password reset', link)
+  await sendEmail(user.email, 'Password reset', link)
 
   res.send('password reset link sent to your email account')
 })
@@ -104,8 +111,7 @@ router.post('/user/password-reset/:userId/:token', async (req, res) => {
     userId: user._id,
     token: req.params.token
   })
-  if (!token) return res.status(400).send('Invalid link or expired')
-
+  if (await !checkToken(token.token)) return res.status(500).send('Invalid token or expired')
   user.password = await bcrypt.hash(req.body.password, 10)
   await user.save()
   await token.delete()
